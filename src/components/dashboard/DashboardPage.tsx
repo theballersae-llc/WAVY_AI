@@ -1,73 +1,101 @@
-import { useState, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
-import { Copy, Wallet, PieChart, AlertTriangle, LogOut, User, ChevronDown } from "lucide-react"
-import { motion } from "framer-motion"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Avatar } from "@/components/ui/avatar"
-import { Separator } from "@/components/ui/separator"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { ShaderAnimation } from "@/components/ui/shader-animation"
-import { GlowingEffect } from "@/components/ui/glowing-effect"
-import { ChatInterface } from "./ChatInterface"
-import { ProfileForm } from "./ProfileForm"
+// src/pages/DashboardPage.tsx (your current path)
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  Copy,
+  Wallet,
+  PieChart,
+  AlertTriangle,
+  LogOut,
+  User,
+  ChevronDown,
+} from "lucide-react";
+import { motion } from "framer-motion";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Avatar } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ShaderAnimation } from "@/components/ui/shader-animation";
+import { GlowingEffect } from "@/components/ui/glowing-effect";
+import { ChatInterface } from "./ChatInterface";
+import { ProfileForm } from "./ProfileForm";
+import { Api, ProfileStore, StoredProfile } from "@/lib/api";
 
 interface MarketAlert {
-  title: string
-  note: string
+  title: string;
+  note: string;
 }
 
 export function DashboardPage() {
-  const navigate = useNavigate()
-  const [walletAddress, setWalletAddress] = useState("")
-  const [walletType, setWalletType] = useState("")
-  const [profileSubmitted, setProfileSubmitted] = useState(false)
-  const [profile, setProfile] = useState<any>({})
-  const [alerts, setAlerts] = useState<MarketAlert[]>([
-    { title: "BTC breaks $45,000", note: "Strong bullish momentum continues" },
-    { title: "DeFi yields rising", note: "Staking rewards increased 15% this week" },
-    { title: "Market volatility warning", note: "Increased volatility expected due to Fed meeting" }
-  ])
+  const navigate = useNavigate();
+  const [walletAddress, setWalletAddress] = useState("");
+  const [walletType, setWalletType] = useState("");
+  const [profileSubmitted, setProfileSubmitted] = useState(false);
+  const [profile, setProfile] = useState<StoredProfile | any>({});
+  const [alerts, setAlerts] = useState<MarketAlert[]>([]);
 
+  // --- Wallet gate ---
   useEffect(() => {
-    const wallet = localStorage.getItem("wavy_wallet")
-    const type = localStorage.getItem("wavy_wallet_type")
-    
+    const wallet = localStorage.getItem("wavy_wallet");
+    const type = localStorage.getItem("wavy_wallet_type");
+
     if (!wallet) {
-      navigate("/connect")
-      return
+      navigate("/connect");
+      return;
     }
-    
-    setWalletAddress(wallet)
-    setWalletType(type || "unknown")
-  }, [navigate])
+    setWalletAddress(wallet);
+    setWalletType(type || "unknown");
+  }, [navigate]);
 
+  // --- Load profile if submitted previously ---
   useEffect(() => {
-    const savedProfile = localStorage.getItem("wavy_profile")
-    const savedSubmitted = localStorage.getItem("wavy_profile_submitted")
-    
-    if (savedProfile && savedSubmitted === "true") {
-      setProfile(JSON.parse(savedProfile))
-      setProfileSubmitted(true)
+    const saved = ProfileStore.load();
+    const submitted = localStorage.getItem("wavy_profile_submitted") === "true";
+    if (saved && submitted) {
+      setProfile(saved);
+      setProfileSubmitted(true);
     }
-  }, [])
+  }, []);
+
+  // --- Fetch market alerts from backend ---
+  useEffect(() => {
+    let mounted = true;
+
+    async function refresh() {
+      try {
+        const { alerts } = await Api.alerts();
+        if (mounted) setAlerts(alerts || []);
+      } catch {
+        if (mounted) setAlerts([]);
+      }
+    }
+    refresh();
+    const id = setInterval(refresh, 30000);
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, []);
 
   const handleProfileSubmit = () => {
-    const savedProfile = localStorage.getItem("wavy_profile")
-    if (savedProfile) {
-      setProfile(JSON.parse(savedProfile))
-    }
-    setProfileSubmitted(true)
-    localStorage.setItem("wavy_profile_submitted", "true")
-  }
+    const saved = ProfileStore.load();
+    if (saved) setProfile(saved);
+    setProfileSubmitted(true);
+    localStorage.setItem("wavy_profile_submitted", "true");
+  };
 
   const copyWalletAddress = () => {
-    navigator.clipboard.writeText(walletAddress)
-  }
+    navigator.clipboard.writeText(walletAddress);
+  };
 
-  const shortenAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`
-  }
+  const shortenAddress = (address: string) =>
+    `${address.slice(0, 6)}...${address.slice(-4)}`;
 
   const getWalletDisplayName = (type: string) => {
     const walletNames: Record<string, string> = {
@@ -75,45 +103,49 @@ export function DashboardPage() {
       walletconnect: "WalletConnect",
       phantom: "Phantom",
       coinbase: "Coinbase Wallet",
-      demo: "Demo Mode"
-    }
-    return walletNames[type] || "Unknown Wallet"
-  }
+      demo: "Demo Mode",
+    };
+    return walletNames[type] || "Unknown Wallet";
+  };
 
   const handleSignOut = () => {
-    localStorage.removeItem("wavy_wallet")
-    localStorage.removeItem("wavy_user")
-    localStorage.removeItem("wavy_profile")
-    navigate("/")
-  }
+    localStorage.removeItem("wavy_wallet");
+    localStorage.removeItem("wavy_user");
+    localStorage.removeItem("wavy_profile");
+    localStorage.removeItem("wavy_profile_submitted");
+    navigate("/");
+  };
 
-  // Allocation data
-  const allocations = profileSubmitted ? [
-    { name: "BTC", value: 40, color: "#f7931a" },
-    { name: "ETH", value: 30, color: "#627eea" },
-    { name: "Stablecoins", value: 20, color: "#26a69a" },
-    { name: "Other", value: 10, color: "#9c27b0" }
-  ] : [
-    { name: "BTC", value: 0, color: "#f7931a" },
-    { name: "ETH", value: 0, color: "#627eea" },
-    { name: "Stablecoins", value: 0, color: "#26a69a" },
-    { name: "Other", value: 0, color: "#9c27b0" }
-  ]
+  // Allocation demo (static for now)
+  const allocations = profileSubmitted
+    ? [
+        { name: "BTC", value: 40, color: "#f7931a" },
+        { name: "ETH", value: 30, color: "#627eea" },
+        { name: "Stablecoins", value: 20, color: "#26a69a" },
+        { name: "Other", value: 10, color: "#9c27b0" },
+      ]
+    : [
+        { name: "BTC", value: 0, color: "#f7931a" },
+        { name: "ETH", value: 0, color: "#627eea" },
+        { name: "Stablecoins", value: 0, color: "#26a69a" },
+        { name: "Other", value: 0, color: "#9c27b0" },
+      ];
 
-  const surplus = profileSubmitted && profile.income && profile.expenses 
-    ? profile.income - profile.expenses 
-    : null
+  const surplus =
+    profileSubmitted && profile?.income && profile?.expenses
+      ? Number(profile.income) - Number(profile.expenses)
+      : null;
 
   const getRiskToleranceLabel = (value: number) => {
-    if (value <= 0.3) return "Conservative"
-    if (value <= 0.6) return "Moderate"
-    return "Aggressive"
-  }
+    if (value <= 0.3) return "Conservative";
+    if (value <= 0.6) return "Moderate";
+    return "Aggressive";
+  };
 
   return (
     <div className="relative min-h-screen bg-black">
       <ShaderAnimation />
-      
+
       {/* Top Bar */}
       <div className="relative z-10 bg-black/40 backdrop-blur-md border-b border-white/10 sticky top-0">
         <div className="flex items-center justify-between p-4">
@@ -123,10 +155,13 @@ export function DashboardPage() {
             </div>
             <span className="font-semibold text-white">Wavy AI</span>
           </div>
-          
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="flex items-center space-x-2 hover:bg-white/10 text-white">
+              <Button
+                variant="ghost"
+                className="flex items-center space-x-2 hover:bg-white/10 text-white"
+              >
                 <Avatar className="w-8 h-8">
                   <div className="w-full h-full bg-white/20 rounded-full flex items-center justify-center">
                     <span className="text-white font-medium text-sm">JD</span>
@@ -135,12 +170,18 @@ export function DashboardPage() {
                 <ChevronDown className="h-4 w-4 text-white/80" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="bg-black/90 backdrop-blur-md border-white/20">
+            <DropdownMenuContent
+              align="end"
+              className="bg-black/90 backdrop-blur-md border-white/20"
+            >
               <DropdownMenuItem className="text-white hover:bg-white/10">
                 <User className="h-4 w-4 mr-2" />
                 Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleSignOut} className="text-white hover:bg-white/10">
+              <DropdownMenuItem
+                onClick={handleSignOut}
+                className="text-white hover:bg-white/10"
+              >
                 <LogOut className="h-4 w-4 mr-2" />
                 Sign out
               </DropdownMenuItem>
@@ -236,7 +277,9 @@ export function DashboardPage() {
                           className="w-3 h-3 rounded-full"
                           style={{ backgroundColor: item.color }}
                         />
-                        <span className="text-sm text-white/80">{item.name}: {item.value}%</span>
+                        <span className="text-sm text-white/80">
+                          {item.name}: {item.value}%
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -245,23 +288,29 @@ export function DashboardPage() {
                     <div className="flex justify-between">
                       <span>Monthly Income:</span>
                       <span className="font-medium text-white">
-                        {profileSubmitted && profile.income ? `${profile.income} AED` : "–"}
+                        {profileSubmitted && profile?.income
+                          ? `${profile.income} AED`
+                          : "–"}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Monthly Expenses:</span>
                       <span className="font-medium text-white">
-                        {profileSubmitted && profile.expenses ? `${profile.expenses} AED` : "–"}
+                        {profileSubmitted && profile?.expenses
+                          ? `${profile.expenses} AED`
+                          : "–"}
                       </span>
                     </div>
                     <div className="flex justify-between text-teal-400 font-medium">
                       <span>Available for Investment:</span>
                       <span>{surplus !== null ? `${surplus} AED` : "–"}</span>
                     </div>
-                    {profileSubmitted && profile.goal ? (
+                    {profileSubmitted && profile?.goal ? (
                       <div className="flex justify-between mt-2">
                         <span>Investment Goal:</span>
-                        <span className="font-medium text-white">{profile.goal}</span>
+                        <span className="font-medium text-white">
+                          {profile.goal}
+                        </span>
                       </div>
                     ) : profileSubmitted ? (
                       <div className="flex justify-between mt-2">
@@ -269,10 +318,12 @@ export function DashboardPage() {
                         <span className="font-medium text-white">–</span>
                       </div>
                     ) : null}
-                    {profileSubmitted && profile.horizon ? (
+                    {profileSubmitted && profile?.horizon ? (
                       <div className="flex justify-between">
                         <span>Time Horizon:</span>
-                        <span className="font-medium text-white">{profile.horizon} years</span>
+                        <span className="font-medium text-white">
+                          {profile.horizon} years
+                        </span>
                       </div>
                     ) : profileSubmitted ? (
                       <div className="flex justify-between">
@@ -280,10 +331,12 @@ export function DashboardPage() {
                         <span className="font-medium text-white">–</span>
                       </div>
                     ) : null}
-                    {profileSubmitted && profile.riskTolerance ? (
+                    {profileSubmitted && profile?.riskTolerance !== undefined ? (
                       <div className="flex justify-between">
                         <span>Risk Tolerance:</span>
-                        <span className="font-medium text-white">{getRiskToleranceLabel(profile.riskTolerance)}</span>
+                        <span className="font-medium text-white">
+                          {getRiskToleranceLabel(Number(profile.riskTolerance))}
+                        </span>
                       </div>
                     ) : profileSubmitted ? (
                       <div className="flex justify-between">
@@ -319,13 +372,20 @@ export function DashboardPage() {
                       key={index}
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1 }}
+                      transition={{ delay: index * 0.05 }}
                       className="p-3 bg-white/10 rounded-lg border border-white/10"
                     >
-                      <h4 className="font-medium text-sm text-white">{alert.title}</h4>
+                      <h4 className="font-medium text-sm text-white">
+                        {alert.title}
+                      </h4>
                       <p className="text-xs text-white/70 mt-1">{alert.note}</p>
                     </motion.div>
                   ))}
+                  {alerts.length === 0 && (
+                    <p className="text-white/60 text-sm">
+                      No alerts right now.
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -333,5 +393,5 @@ export function DashboardPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }
