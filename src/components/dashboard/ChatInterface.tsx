@@ -1,6 +1,6 @@
 // src/pages/ChatInterface.tsx
-import { useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { MessageSquare, Send } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,16 +15,36 @@ interface ChatMessage {
   timestamp: Date;
 }
 
+/** 
+ * Increase/decrease these classes to control chat window height
+ * Examples:
+ *  - "h-72"  = 18rem
+ *  - "h-80"  = 20rem
+ *  - "max-h-[26rem] min-h-[16rem]" for responsive fixed range
+ */
+const CHAT_HEIGHT_CLASSES = "h-80"; // <- make taller/shorter here
+
 export function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  // Keep a ref to auto-scroll the messages container
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const quickPrompts = [
     "How should I invest 2,000 AED this month?",
     "Low risk, 1-year goal — what allocation?",
     "What's trending this week and why?",
   ];
+
+  // Auto-scroll to bottom when messages change or while loading
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // smooth scroll to bottom
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [messages, isLoading]);
 
   const handleSendMessage = async (message: string) => {
     if (!message.trim()) return;
@@ -43,7 +63,7 @@ export function ChatInterface() {
     };
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
-    setIsLoading(true);
+    setIsLoading(true); // hide quick prompts while waiting
 
     try {
       const normalized = mergeProfileForChat(profile);
@@ -65,7 +85,7 @@ export function ChatInterface() {
       };
       setMessages((prev) => [...prev, errMsg]);
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // show quick prompts again after response
     }
   };
 
@@ -85,8 +105,13 @@ export function ChatInterface() {
           Ask your Advisor
         </CardTitle>
       </CardHeader>
+
       <CardContent className="p-6">
-        <div className="space-y-3 overflow-y-auto max-h-40 mb-4">
+        {/* Messages window (taller now) */}
+        <div
+          ref={scrollRef}
+          className={`space-y-3 overflow-y-auto mb-4 rounded-md ${CHAT_HEIGHT_CLASSES}`}
+        >
           {messages.map((message) => (
             <motion.div
               key={message.id}
@@ -109,37 +134,59 @@ export function ChatInterface() {
               </div>
             </motion.div>
           ))}
-          {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-white/10 p-3 rounded-lg border border-white/20">
-                <div className="flex space-x-1">
-                  <div className="w-2 h-2 bg-white/70 rounded-full animate-bounce" />
-                  <div
-                    className="w-2 h-2 bg-white/70 rounded-full animate-bounce"
-                    style={{ animationDelay: "0.1s" }}
-                  />
-                  <div
-                    className="w-2 h-2 bg-white/70 rounded-full animate-bounce"
-                    style={{ animationDelay: "0.2s" }}
-                  />
+
+          {/* Typing indicator */}
+          <AnimatePresence>
+            {isLoading && (
+              <motion.div
+                key="typing"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex justify-start"
+              >
+                <div className="bg-white/10 p-3 rounded-lg border border-white/20">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-white/70 rounded-full animate-bounce" />
+                    <div
+                      className="w-2 h-2 bg-white/70 rounded-full animate-bounce"
+                      style={{ animationDelay: "0.1s" }}
+                    />
+                    <div
+                      className="w-2 h-2 bg-white/70 rounded-full animate-bounce"
+                      style={{ animationDelay: "0.2s" }}
+                    />
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        <div className="space-y-2 mb-4">
-          {quickPrompts.map((prompt, index) => (
-            <button
-              key={index}
-              onClick={() => handleSendMessage(prompt)}
-              className="w-full text-left p-2 text-xs bg-white/10 hover:bg-white/20 rounded-md transition-colors text-white/80 border border-white/10"
+        {/* Quick prompts: hide while loading, reappear when response arrives */}
+        <AnimatePresence>
+          {!isLoading && (
+            <motion.div
+              key="quick-prompts"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              className="space-y-2 mb-4"
             >
-              {prompt}
-            </button>
-          ))}
-        </div>
+              {quickPrompts.map((prompt, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleSendMessage(prompt)}
+                  className="w-full text-left p-2 text-xs bg-white/10 hover:bg-white/20 rounded-md transition-colors text-white/80 border border-white/10"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
+        {/* Input row */}
         <div className="flex space-x-2">
           <Input
             value={inputValue}
@@ -154,6 +201,7 @@ export function ChatInterface() {
             disabled={isLoading || !inputValue.trim()}
             size="icon"
             className="bg-teal-600 hover:bg-teal-700"
+            aria-label="Send message"
           >
             <Send className="h-4 w-4" />
           </Button>
