@@ -1,4 +1,3 @@
-// src/pages/DashboardPage.tsx (your current path)
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -36,15 +35,23 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const [walletAddress, setWalletAddress] = useState("");
   const [walletType, setWalletType] = useState("");
+
   const [profileSubmitted, setProfileSubmitted] = useState(false);
   const [profile, setProfile] = useState<StoredProfile | any>({});
   const [alerts, setAlerts] = useState<MarketAlert[]>([]);
+
+  // --- Display balances (STATIC during demo). Do not decrement these on invest.
+  const [balanceAED] = useState(12450);   // Wallet Balance (AED) shown in Wallet Overview
+  const [balanceUSDC] = useState(3390);   // Wallet Balance (USDC) shown in Wallet Overview
+  const [investmentBudgetAED, setInvestmentBudgetAED] = useState<number | null>(null); // "Available for Investment" in Allocation card
+
+  // --- The ONLY mutable number for the demo drain:
+  const [totalBalanceAED, setTotalBalanceAED] = useState<number>(12450); // will be reset when profile loads/submits
 
   // --- Wallet gate ---
   useEffect(() => {
     const wallet = localStorage.getItem("wavy_wallet");
     const type = localStorage.getItem("wavy_wallet_type");
-
     if (!wallet) {
       navigate("/connect");
       return;
@@ -53,20 +60,30 @@ export function DashboardPage() {
     setWalletType(type || "unknown");
   }, [navigate]);
 
-  // --- Load profile if submitted previously ---
+  // --- Load profile if submitted previously; initialize "Available" and reset TOTAL only.
   useEffect(() => {
     const saved = ProfileStore.load();
     const submitted = localStorage.getItem("wavy_profile_submitted") === "true";
     if (saved && submitted) {
       setProfile(saved);
       setProfileSubmitted(true);
+      const surplus =
+        saved?.income != null && saved?.expenses != null
+          ? Number(saved.income) - Number(saved.expenses)
+          : null;
+      setInvestmentBudgetAED(surplus);
+      // Initialize total as Wallet Balance + Available for Investment
+      const initTotal = Number((balanceAED + (surplus ?? 0)).toFixed(2));
+      setTotalBalanceAED(initTotal);
+    } else {
+      // No profile yet: total is just the wallet balance
+      setTotalBalanceAED(balanceAED);
     }
-  }, []);
+  }, [balanceAED]);
 
   // --- Fetch market alerts from backend ---
   useEffect(() => {
     let mounted = true;
-
     async function refresh() {
       try {
         const { alerts } = await Api.alerts();
@@ -83,30 +100,36 @@ export function DashboardPage() {
     };
   }, []);
 
+  // --- After profile is saved: reset "Available" and reinitialize TOTAL only.
   const handleProfileSubmit = () => {
     const saved = ProfileStore.load();
-    if (saved) setProfile(saved);
+    if (saved) {
+      setProfile(saved);
+      const surplus =
+        saved?.income != null && saved?.expenses != null
+          ? Number(saved.income) - Number(saved.expenses)
+          : null;
+      setInvestmentBudgetAED(surplus);
+      const initTotal = Number((balanceAED + (surplus ?? 0)).toFixed(2));
+      setTotalBalanceAED(initTotal);
+    }
     setProfileSubmitted(true);
     localStorage.setItem("wavy_profile_submitted", "true");
   };
 
-  const copyWalletAddress = () => {
-    navigator.clipboard.writeText(walletAddress);
-  };
+  const copyWalletAddress = () => navigator.clipboard.writeText(walletAddress);
 
   const shortenAddress = (address: string) =>
     `${address.slice(0, 6)}...${address.slice(-4)}`;
 
-  const getWalletDisplayName = (type: string) => {
-    const walletNames: Record<string, string> = {
+  const getWalletDisplayName = (type: string) =>
+    ({
       metamask: "MetaMask",
       walletconnect: "WalletConnect",
       phantom: "Phantom",
       coinbase: "Coinbase Wallet",
       demo: "Demo Mode",
-    };
-    return walletNames[type] || "Unknown Wallet";
-  };
+    } as Record<string, string>)[type] || "Unknown Wallet";
 
   const handleSignOut = () => {
     localStorage.removeItem("wavy_wallet");
@@ -116,7 +139,7 @@ export function DashboardPage() {
     navigate("/");
   };
 
-  // Allocation demo (static for now)
+  // Allocation chips (static demo)
   const allocations = profileSubmitted
     ? [
         { name: "BTC", value: 40, color: "#f7931a" },
@@ -131,15 +154,13 @@ export function DashboardPage() {
         { name: "Other", value: 0, color: "#9c27b0" },
       ];
 
-  const surplus =
-    profileSubmitted && profile?.income && profile?.expenses
-      ? Number(profile.income) - Number(profile.expenses)
-      : null;
+  const getRiskToleranceLabel = (value: number) =>
+    value <= 0.3 ? "Conservative" : value <= 0.6 ? "Moderate" : "Aggressive";
 
-  const getRiskToleranceLabel = (value: number) => {
-    if (value <= 0.3) return "Conservative";
-    if (value <= 0.6) return "Moderate";
-    return "Aggressive";
+  // === Called by Chat when "Invest Now" is clicked
+  // ONLY reduce the TOTAL. Do NOT mutate Balance (AED) or Available for Investment.
+  const handleDemoInvest = ({ totalAED }: { totalAED: number }) => {
+    setTotalBalanceAED((prev) => Math.max(0, Number((prev - totalAED).toFixed(2))));
   };
 
   return (
@@ -196,7 +217,11 @@ export function DashboardPage() {
           {/* Left Column - AI Agent */}
           <div className="space-y-6">
             <ProfileForm onSubmit={handleProfileSubmit} />
-            <ChatInterface />
+            <ChatInterface
+              balanceAED={balanceAED}
+              availableBudgetAED={investmentBudgetAED}
+              onDemoInvest={handleDemoInvest}
+            />
           </div>
 
           {/* Right Column - Wallet & Insights */}
@@ -238,15 +263,33 @@ export function DashboardPage() {
                     </Button>
                   </div>
                 </div>
+
+                {/* TOTAL is the only changing number */}
+                <div className="rounded-lg bg-white/5 px-4 py-3 border border-white/10">
+                  <p className="text-sm text-white/70">Total Balance (AED)</p>
+                  <p className="text-2xl font-semibold text-teal-300">
+                    {totalBalanceAED.toLocaleString()}
+                  </p>
+                  <p className="text-[11px] mt-1 text-white/50">
+                    Initialized from Wallet Balance + Available for Investment; decreases when you invest (demo).
+                  </p>
+                </div>
+
                 <Separator className="border-white/20" />
+
+                {/* STATIC displays */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-white/70">Balance (AED)</p>
-                    <p className="text-lg font-semibold text-white">12,450</p>
+                    <p className="text-lg font-semibold text-white">
+                      {balanceAED.toLocaleString()}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm text-white/70">Balance (USDC)</p>
-                    <p className="text-lg font-semibold text-white">3,390</p>
+                    <p className="text-lg font-semibold text-white">
+                      {balanceUSDC.toLocaleString()}
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -271,12 +314,22 @@ export function DashboardPage() {
               <CardContent className="p-6">
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-2">
-                    {allocations.map((item) => (
+                    {(profileSubmitted
+                      ? [
+                          { name: "BTC", value: 40, color: "#f7931a" },
+                          { name: "ETH", value: 30, color: "#627eea" },
+                          { name: "Stablecoins", value: 20, color: "#26a69a" },
+                          { name: "Other", value: 10, color: "#9c27b0" },
+                        ]
+                      : [
+                          { name: "BTC", value: 0, color: "#f7931a" },
+                          { name: "ETH", value: 0, color: "#627eea" },
+                          { name: "Stablecoins", value: 0, color: "#26a69a" },
+                          { name: "Other", value: 0, color: "#9c27b0" },
+                        ]
+                    ).map((item) => (
                       <div key={item.name} className="flex items-center space-x-2">
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: item.color }}
-                        />
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
                         <span className="text-sm text-white/80">
                           {item.name}: {item.value}%
                         </span>
@@ -288,29 +341,25 @@ export function DashboardPage() {
                     <div className="flex justify-between">
                       <span>Monthly Income:</span>
                       <span className="font-medium text-white">
-                        {profileSubmitted && profile?.income
-                          ? `${profile.income} AED`
-                          : "–"}
+                        {profileSubmitted && profile?.income ? `${profile.income} AED` : "–"}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Monthly Expenses:</span>
                       <span className="font-medium text-white">
-                        {profileSubmitted && profile?.expenses
-                          ? `${profile.expenses} AED`
-                          : "–"}
+                        {profileSubmitted && profile?.expenses ? `${profile.expenses} AED` : "–"}
                       </span>
                     </div>
                     <div className="flex justify-between text-teal-400 font-medium">
                       <span>Available for Investment:</span>
-                      <span>{surplus !== null ? `${surplus} AED` : "–"}</span>
+                      <span>
+                        {investmentBudgetAED !== null ? `${investmentBudgetAED} AED` : "–"}
+                      </span>
                     </div>
                     {profileSubmitted && profile?.goal ? (
                       <div className="flex justify-between mt-2">
                         <span>Investment Goal:</span>
-                        <span className="font-medium text-white">
-                          {profile.goal}
-                        </span>
+                        <span className="font-medium text-white">{profile.goal}</span>
                       </div>
                     ) : profileSubmitted ? (
                       <div className="flex justify-between mt-2">
@@ -321,9 +370,7 @@ export function DashboardPage() {
                     {profileSubmitted && profile?.horizon ? (
                       <div className="flex justify-between">
                         <span>Time Horizon:</span>
-                        <span className="font-medium text-white">
-                          {profile.horizon} years
-                        </span>
+                        <span className="font-medium text-white">{profile.horizon} years</span>
                       </div>
                     ) : profileSubmitted ? (
                       <div className="flex justify-between">
@@ -375,16 +422,12 @@ export function DashboardPage() {
                       transition={{ delay: index * 0.05 }}
                       className="p-3 bg-white/10 rounded-lg border border-white/10"
                     >
-                      <h4 className="font-medium text-sm text-white">
-                        {alert.title}
-                      </h4>
+                      <h4 className="font-medium text-sm text-white">{alert.title}</h4>
                       <p className="text-xs text-white/70 mt-1">{alert.note}</p>
                     </motion.div>
                   ))}
                   {alerts.length === 0 && (
-                    <p className="text-white/60 text-sm">
-                      No alerts right now.
-                    </p>
+                    <p className="text-white/60 text-sm">No alerts right now.</p>
                   )}
                 </div>
               </CardContent>
