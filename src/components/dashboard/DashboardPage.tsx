@@ -25,6 +25,7 @@ import { GlowingEffect } from "@/components/ui/glowing-effect";
 import { ChatInterface } from "./ChatInterface";
 import { ProfileForm } from "./ProfileForm";
 import { Api, ProfileStore, StoredProfile } from "@/lib/api";
+import { VoiceChat } from "@/components/pages/VoiceChat"; // <-- Added
 
 interface MarketAlert {
   title: string;
@@ -41,9 +42,11 @@ export function DashboardPage() {
   const [alerts, setAlerts] = useState<MarketAlert[]>([]);
 
   // --- Display balances (STATIC during demo). Do not decrement these on invest.
-  const [balanceAED] = useState(12450);   // Wallet Balance (AED) shown in Wallet Overview
-  const [balanceUSDC] = useState(3390);   // Wallet Balance (USDC) shown in Wallet Overview
-  const [investmentBudgetAED, setInvestmentBudgetAED] = useState<number | null>(null); // "Available for Investment" in Allocation card
+  const [balanceAED] = useState(12450); // Wallet Balance (AED) shown in Wallet Overview
+  const [balanceUSDC] = useState(3390); // Wallet Balance (USDC) shown in Wallet Overview
+  const [investmentBudgetAED, setInvestmentBudgetAED] = useState<number | null>(
+    null
+  ); // "Available for Investment" in Allocation card
 
   // --- The ONLY mutable number for the demo drain:
   const [totalBalanceAED, setTotalBalanceAED] = useState<number>(12450); // will be reset when profile loads/submits
@@ -160,7 +163,9 @@ export function DashboardPage() {
   // === Called by Chat when "Invest Now" is clicked
   // ONLY reduce the TOTAL. Do NOT mutate Balance (AED) or Available for Investment.
   const handleDemoInvest = ({ totalAED }: { totalAED: number }) => {
-    setTotalBalanceAED((prev) => Math.max(0, Number((prev - totalAED).toFixed(2))));
+    setTotalBalanceAED((prev) =>
+      Math.max(0, Number((prev - totalAED).toFixed(2)))
+    );
   };
 
   return (
@@ -217,7 +222,16 @@ export function DashboardPage() {
           {/* Left Column - AI Agent */}
           <div className="space-y-6">
             <ProfileForm onSubmit={handleProfileSubmit} />
+
+            {/* Text chat */}
             <ChatInterface
+              balanceAED={balanceAED}
+              availableBudgetAED={investmentBudgetAED}
+              onDemoInvest={handleDemoInvest}
+            />
+
+            {/* Voice chat (browser native for demo) */}
+            <VoiceChat
               balanceAED={balanceAED}
               availableBudgetAED={investmentBudgetAED}
               onDemoInvest={handleDemoInvest}
@@ -271,7 +285,8 @@ export function DashboardPage() {
                     {totalBalanceAED.toLocaleString()}
                   </p>
                   <p className="text-[11px] mt-1 text-white/50">
-                    Initialized from Wallet Balance + Available for Investment; decreases when you invest (demo).
+                    Initialized from Wallet Balance + Available for Investment;
+                    decreases when you invest (demo).
                   </p>
                 </div>
 
@@ -329,7 +344,10 @@ export function DashboardPage() {
                         ]
                     ).map((item) => (
                       <div key={item.name} className="flex items-center space-x-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                        <div
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: item.color }}
+                        />
                         <span className="text-sm text-white/80">
                           {item.name}: {item.value}%
                         </span>
@@ -341,25 +359,33 @@ export function DashboardPage() {
                     <div className="flex justify-between">
                       <span>Monthly Income:</span>
                       <span className="font-medium text-white">
-                        {profileSubmitted && profile?.income ? `${profile.income} AED` : "–"}
+                        {profileSubmitted && profile?.income
+                          ? `${profile.income} AED`
+                          : "–"}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Monthly Expenses:</span>
                       <span className="font-medium text-white">
-                        {profileSubmitted && profile?.expenses ? `${profile.expenses} AED` : "–"}
+                        {profileSubmitted && profile?.expenses
+                          ? `${profile.expenses} AED`
+                          : "–"}
                       </span>
                     </div>
                     <div className="flex justify-between text-teal-400 font-medium">
                       <span>Available for Investment:</span>
                       <span>
-                        {investmentBudgetAED !== null ? `${investmentBudgetAED} AED` : "–"}
+                        {investmentBudgetAED !== null
+                          ? `${investmentBudgetAED} AED`
+                          : "–"}
                       </span>
                     </div>
                     {profileSubmitted && profile?.goal ? (
                       <div className="flex justify-between mt-2">
                         <span>Investment Goal:</span>
-                        <span className="font-medium text-white">{profile.goal}</span>
+                        <span className="font-medium text-white">
+                          {profile.goal}
+                        </span>
                       </div>
                     ) : profileSubmitted ? (
                       <div className="flex justify-between mt-2">
@@ -370,7 +396,9 @@ export function DashboardPage() {
                     {profileSubmitted && profile?.horizon ? (
                       <div className="flex justify-between">
                         <span>Time Horizon:</span>
-                        <span className="font-medium text-white">{profile.horizon} years</span>
+                        <span className="font-medium text-white">
+                          {profile.horizon} years
+                        </span>
                       </div>
                     ) : profileSubmitted ? (
                       <div className="flex justify-between">
@@ -378,11 +406,14 @@ export function DashboardPage() {
                         <span className="font-medium text-white">–</span>
                       </div>
                     ) : null}
-                    {profileSubmitted && profile?.riskTolerance !== undefined ? (
+                    {profileSubmitted &&
+                    profile?.riskTolerance !== undefined ? (
                       <div className="flex justify-between">
                         <span>Risk Tolerance:</span>
                         <span className="font-medium text-white">
-                          {getRiskToleranceLabel(Number(profile.riskTolerance))}
+                          {getRiskToleranceLabel(
+                            Number(profile.riskTolerance)
+                          )}
                         </span>
                       </div>
                     ) : profileSubmitted ? (
@@ -422,7 +453,9 @@ export function DashboardPage() {
                       transition={{ delay: index * 0.05 }}
                       className="p-3 bg-white/10 rounded-lg border border-white/10"
                     >
-                      <h4 className="font-medium text-sm text-white">{alert.title}</h4>
+                      <h4 className="font-medium text-sm text-white">
+                        {alert.title}
+                      </h4>
                       <p className="text-xs text-white/70 mt-1">{alert.note}</p>
                     </motion.div>
                   ))}
